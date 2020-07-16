@@ -602,7 +602,7 @@ let tamanhoRegex = ref 0
 
 type transition = {mutable next:state pointer; mutable symbol:char}
 and state = {mutable isEnd: bool; mutable transitions:transition list;mutable epsilon:transition list;id:int}
-and nfa = {mutable startState:state; mutable endState:state ; mutable tipo: char}
+and nfa = {mutable startState:state; mutable endState:state}
 
 let createEstado eFinal = 
   globalId:=!globalId +1;
@@ -613,26 +613,26 @@ let createC (c:char) =
   let second = createEstado true in
   let newTrans = {next= new_pointer second;symbol=c} in
   first.transitions <- [] @ [newTrans];
-  {startState= first ;endState=second;tipo='C'}
+  {startState= first ;endState=second}
 
 let createE =
   let first= createEstado true in
-  {startState=first ;endState= first;tipo='E'}
+  {startState=first ;endState= first}
 
 let createV = 
   let first = createEstado false in
   let second = createEstado true in
-  {startState=first ;endState=second;tipo='V'}
+  {startState=first ;endState=second}
 
 
 let addEpsilonTransition from destination=
-  from.epsilon <- from.epsilon @ [{next = new_pointer destination;symbol='\\'}];;
+  from.epsilon <- {next = new_pointer destination;symbol='\\'}::  from.epsilon ;;
 
 (*Tipos de NFAs*)
 let concat first second=
   addEpsilonTransition first.endState second.startState;
   first.endState.isEnd <-  false;
-  {startState = first.startState; endState=second.endState;tipo='P'}
+  {startState = first.startState; endState=second.endState}
 
 let union first second=
   let startS = createEstado false in
@@ -644,7 +644,7 @@ let union first second=
   addEpsilonTransition first.endState endS;
   addEpsilonTransition second.endState endS;
 
-  {startState= startS; endState=endS; tipo = 'U'}
+  {startState= startS; endState=endS}
 
 let closure nfaS =
   let startS = createEstado false in
@@ -656,11 +656,12 @@ let closure nfaS =
   addEpsilonTransition nfaS.endState endS;
   addEpsilonTransition nfaS.endState nfaS.startState;
   nfaS.endState.isEnd <- false;
-  {startState = startS;endState=endS; tipo='S'}
+  {startState = startS;endState=endS}
 
 
 (*Função que transforma os tipos recursivos numa lista, por exemplo, (A+B)*.D ficaria PSUC(A)C(B)C(D)*)
 (*NOTA:Segundo a aula do profesor isto dá para pôr tudo num só match, não é necessário pôr isto numa pilha, possivelmente mais rápido.*)
+(*
 let rec buildNfa s =
   tamanhoRegex:= !tamanhoRegex+1;
 
@@ -675,21 +676,20 @@ let rec buildNfa s =
   | S s     ->  [{startState = createEstado false; endState =createEstado true; tipo = 'S'}]@
                 buildNfa s
 
-(* exemplo de cÃ³digo para ilustrar o uso da funÃ§Ã£o regexp e o tipo regexp *)
+ *)
 
-
+let rec buildNfaS s =
+  tamanhoRegex:= !tamanhoRegex+1;  match s with
+  | V       ->  createV
+  | E       ->  createE
+  | C  c    ->  createC c
+  | U (f,g) ->  union (buildNfaS f) (buildNfaS g)
+  | P (f,g) ->  concat (buildNfaS f) (buildNfaS g)
+  | S s     ->  closure (buildNfaS s)
+;;
 
 
 (*Para debugging das listas*)
-let debuggingStacks stackA stackB =
-  let printChar x =
-    print_char x.tipo in
-
-  print_string "\n------Stack A---> ";
-  Stack.iter printChar stackA;
-  print_string "\n------Stack B---> ";
-  Stack.iter printChar stackB;
-  print_char '\n';;
 
 let rec string_of_regexp s =
   match s with
@@ -705,18 +705,6 @@ let rec string_of_regexp s =
 
 
 
-(*
-
-Transforma Por exemplo PSUCCC em 
-C
-C
-C
-U
-S
-P
-
-
-*)
 
 
 let listToStack lista stackA=
@@ -735,18 +723,7 @@ let stackToList stackA =
 
 let copiarParaOutraStack stackA stackB =
   Stack.iter (fun x -> Stack.push x stackB) stackA;;
-(*
-let doesStackContain ele stackA=
-  let newStack = Stack.copy stackA in
-  let rec aux stackB =
-    if(Stack.is_empty stackB) then false
-    else begin
-      let lastPop = Stack.pop stackB in
-      if(lastPop = ele) then true || aux stackB
-      else false || aux stackB
-    end
-  in aux newStack
-*)
+
 let doesStackContain ele stackA =
   let contains = ref false in
   let aux stackEle =
@@ -768,122 +745,9 @@ let doesStackContainEnd stackA=
     end
   in
   aux stackA
-(*
-let rec compilarStack stackA stackB=
-
-  if(not (Stack.is_empty stackA)) 
-  then begin
-  if(not (Stack.is_empty stackB)) then debuggingStacks stackA stackB;
-  let lastPop = Stack.pop stackA in
-  if(Char.compare lastPop.tipo 'C' == 0 || Char.compare lastPop.tipo 'V' == 0 || Char.compare lastPop.tipo 'E' == 0) then
-
-    print_string "No C-----";
-    Stack.push (lastPop) stackB;
-    compilarStack stackA stackB;
-  if(Char.compare lastPop.tipo 'P' == 0) then 
-    let dirs = Stack.pop stackB in
-    let esqs = Stack.pop stackB in
-    print_string "No P-----";
-    Stack.push (concat esqs dirs) stackB;
-    compilarStack stackA stackB;
-  if(Char.compare lastPop.tipo 'U' == 0) then 
-    let dirs = Stack.pop stackB in
-    let esqs = Stack.pop stackB in
-    print_string "No U-----";
-    Stack.push (union esqs dirs) stackB;
-    compilarStack stackA stackB;
-  if(Char.compare lastPop.tipo 'S' == 0) then
-    print_string "No S-----";
-    Stack.push (closure ( Stack.pop stackB)) stackB;
-    compilarStack stackA stackB;
-  else 
-    print_string "No Fim-----";
-  end 
-
-  *)
 
 
 
-
-
-
-
-(*
-A forma como os NFAs são processados é a seguinte
-Temos uma Pilha "stackA" onde contem todos os NFAs processados pela função 'buildNfa', 
-usando o exemplo PSUCCC, sendo P a concatenação, S a estrela de kleen, U a união e C um caracter, ou seja, PSUCCC é equivalente a (A+B)*.C 
-(O último elemento é o topo da pilha, e o C contém uma letra)
-pilha A -> PSUCCC
-pilha B -> Vazia
-
-Vamos tirando da pilha NFAs até chegarmos a um NFA que "Consuma" 1 ou mais NFAs, por exemplo, a União contém 2 NFAs, ou seja consome 2, mesma situação com a Concatenação e a estrela consome 1 apenas
-Como o C,E e V não contêm qualquer NFA estes são postos diretamente na pilha B, um por um
-
-(Depois de passarmos por todos os C na pilha A, ou seja, depois de 3 iterações)
-Pilha A -> PSU
-Pilha B -> CCC       (Basicamente, os caracteres C B A )
-
-Como o U consome dois NFAs, vamos dar pop duas vezes à Pilha B, incluimos os dois pops no U e inserimos o novo U na Pilha B
-
-Pilha A -> PS
-Pilha B -> CU        (o caracter C, um NFA U que contém dois NFAs de Caracter, o NFA do caracter A e do B)
-
-(Próxuma iteração)
-Como o S consome um NFA, vamos dar Pop uma vez à Pilha B, incluimos o último pop no S e inserimos o novo S na Pilha B
-
-Pilha A -> P
-Pilha B -> CS        (o caracter C e um NFA S que contem um NFA U que contém dois NFAs de Caracter, o NFA do caracter A e do B)
-
-(Próxima iteração)
-
-como o P consome dois NFAs, vamos dar pop duas vezes à Pilha B, incluimos os dois pops no P e inserimos o novo P na Pilha B
-
-Pilha A -> Vazia
-
-Pilha B -> P   (um NFA P que contem o caracter C e um NFA S que contem um NFA U que contém dois NFAs de Caracter, o NFA do caracter A e do B )
-
-como a pilha A está vazia, o nosso NFA já está compilado, ou seja, já convertemos o Regex (A+B)*C num NFA
-
-*)
-
-
-let rec compilarStackO stackA stackB =
-
-  if(not (Stack.is_empty stackA)) 
-  then begin
-    (*if(not (Stack.is_empty stackB)) then debuggingStacks stackA stackB;*)
-    let lastPop = Stack.pop stackA in
-    match lastPop.tipo with 
-    | 'V'->  Stack.push (lastPop) stackB; compilarStackO stackA stackB;
-    | 'E'->  Stack.push (lastPop) stackB; compilarStackO stackA stackB;
-    | 'C'->  Stack.push (lastPop) stackB; compilarStackO stackA stackB;
-    | 'U'-> 
-      let dirs = Stack.pop stackB in
-      let esqs = Stack.pop stackB in
-      Stack.push (union esqs dirs) stackB;
-      compilarStackO stackA stackB;
-    | 'P'-> 
-      let dirs = Stack.pop stackB in
-      let esqs = Stack.pop stackB in
-      Stack.push (concat dirs esqs) stackB;
-      compilarStackO stackA stackB;
-    | 'S'-> 
-      Stack.push (closure ( Stack.pop stackB)) stackB;
-      compilarStackO stackA stackB;
-    | _ -> () 
-  end
-
-let compile str =
-  let stackA = Stack.create () in
-  let stackB = Stack.create () in
-  listToStack (buildNfa str) stackA;
-  compilarStackO stackA stackB;
-  (*let teste = debuggingStacks stackA stackB in*)
-
-  Stack.pop stackB;;
-
-
-(*O primeiro estado não é um apontador.*)
 
 
 let rec percorrerEpsilon stateS nextStates visited=
@@ -893,11 +757,11 @@ let rec percorrerEpsilon stateS nextStates visited=
       let st = !^(trans.next) in
       (**not (doesStackContain st visited)*)
       if(not (List.exists (fun x -> x = st.id) visited)) then begin
-        percorrerEpsilon st nextStates (visited@[st.id]);
+        percorrerEpsilon st nextStates (st.id::visited);
       end
     in
     List.iter aux stateS.epsilon;
-  else nextStates:=!nextStates @ [stateS] 
+  else nextStates:=stateS ::!nextStates  
 
 
 (*---------------------------------*)
@@ -914,7 +778,7 @@ let search nfa word =
     else
       (*let nextEle = List.find_opt (fun x-> x.symbol = symbol) st.transitions in*)
       (*Possivelmente deve-se tirar este sort*)
-      let nextEle = List.find_opt (fun x-> x.symbol = symbol) (List.fast_sort (fun x y -> ~- (compare (!^(x.next)).isEnd (!^(x.next)).isEnd)) st.transitions)  in
+      let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
       if(not (nextEle = None)) then
         let nextState = !^((Option.get nextEle).next) in
         percorrerEpsilon nextState nextStates [];
@@ -925,28 +789,34 @@ let search nfa word =
   let symbolOfWord symbol =
     nextStates:= [];
     if(not !hasMatch) then begin
-      List.iter (fun x->stateOfCurrentStates x nextStates symbol) !currentState;
+      List.iter (fun x->stateOfCurrentStates x nextStates symbol)  !currentState;
       if(!hasFailed) then begin
-        currentState := [];
         currentState := !inicio;
         hasFailed:=true;
       end
       else begin
-        currentState:=[];
         currentState:=!nextStates;
         hasFailed:=true;
       end
     end
   in
 
+  let strlen = String.length word in
+  let i = ref 0 in
+  while((not (!hasMatch)) && (!i) < strlen) do
+    symbolOfWord (String.get word (!i));
 
-  String.iter symbolOfWord word;
+
+    i:=!i+1;
+  done;
+  (*String.iter symbolOfWord word;*)
 
   (*hasMatch serve para descobrir um prefixo e o doesStackContainEnd para sufixo*)
   if(!hasMatch) then true
   else 
     List.exists (fun x -> x.isEnd = true) !currentState
 (*---------------------------------*)
+
 
 (*
 let search nfa word =
@@ -1003,13 +873,12 @@ let () =
   Printf.printf "\nRegex Parsing Time elapsed %g s\n" (Sys.time() -. regexStart);
   let compileStart= Sys.time() in
   let strS = adn in
-  let resultingNfa =compile r in
+  let resultingNfa =buildNfaS r in
   Printf.printf "\nCompiling Time elapsed %g s\n" (Sys.time() -. compileStart);
   let matchTime= Sys.time() in
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
   Printf.printf "\nMatching Time elapsed %g s\n" (Sys.time() -. matchTime);
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
-
 (*
 let () =
 
@@ -1017,8 +886,7 @@ let () =
 
   let strS = adn in
 
-  let resultingNfa =compile r in
-
-  if(search resultingNfa strS) then print_string "YES" else print_string "NO";
+  let resultingNfa =buildNfaS r in
+  if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
 
 *)
