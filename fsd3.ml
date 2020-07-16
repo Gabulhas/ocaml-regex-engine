@@ -765,6 +765,7 @@ let rec percorrerEpsilon stateS nextStates visited=
 
 
 (*---------------------------------*)
+(*
 let search nfa word =
   let currentState = ref [] in
   let nextStates = ref [] in
@@ -808,8 +809,45 @@ let search nfa word =
   if(!hasMatch) then true
   else 
     List.exists (fun x -> x.isEnd = true) !currentState
+  *)
 (*---------------------------------*)
+let search nfa word =
+  let currentState = ref [] in
+  let nextStates = ref [] in
+  let hasMatch = ref false in
+  let hasFailed =  ref true in
+  percorrerEpsilon nfa.startState currentState ([]);
+  (*let inicio = ref !currentState in *)
 
+  let stateOfCurrentStates st nextStates symbol =
+    if(st.isEnd || !hasMatch) then hasMatch:=true
+    else
+      (*let nextEle = List.find_opt (fun x-> x.symbol = symbol) st.transitions in*)
+      (*Possivelmente deve-se tirar este sort*)
+      let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
+      if(not (nextEle = None)) then
+        let nextState = !^((Option.get nextEle).next) in
+        percorrerEpsilon nextState nextStates [];
+        hasFailed := false;
+
+  in
+
+  let symbolOfWord symbol =
+    nextStates:= [];
+    if(not !hasMatch) then begin
+      List.iter (fun x->stateOfCurrentStates x nextStates symbol)  !currentState;
+      currentState:=!nextStates;
+      hasFailed:=true;
+    end
+  in
+
+
+  String.iter symbolOfWord word;
+
+  (*hasMatch serve para descobrir um prefixo e o doesStackContainEnd para sufixo*)
+  if(!hasMatch) then true
+  else 
+    List.exists (fun x -> x.isEnd = true) !currentState
 
 let isAdn word =
   let flag = ref true in
@@ -832,7 +870,7 @@ let tamanhoAdn = String.length adn;;
 let () =
   let totalTime = Sys.time()in
   let regexStart = Sys.time() in
-  let r = regexp padrao in
+  let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"])  in
   Printf.printf "\nRegex Parsing Time elapsed %g s\n" (Sys.time() -. regexStart);
   let compileStart= Sys.time() in
   let strS = adn in
@@ -842,14 +880,12 @@ let () =
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
   Printf.printf "\nMatching Time elapsed %g s\n" (Sys.time() -. matchTime);
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
-*)
-
 
 let () =
 
   let totalTime = Sys.time()in
 
-  let r = regexp padrao in
+  let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]) in
 
   let strS = adn in
 
@@ -858,3 +894,15 @@ let () =
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
 
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
+
+  *)
+
+let () = 
+
+  let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]) in
+
+  let strS = adn in
+
+  let resultingNfa =buildNfaS r in
+
+  if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
