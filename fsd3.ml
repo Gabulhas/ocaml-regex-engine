@@ -626,7 +626,7 @@ let createV =
 
 
 let addEpsilonTransition from destination=
-  from.epsilon <- {next = new_pointer destination;symbol='\\'}::  from.epsilon ;;
+  from.epsilon <- from.epsilon @ [{next = new_pointer destination;symbol='\\'}];;
 
 (*Tipos de NFAs*)
 let concat first second=
@@ -757,11 +757,11 @@ let rec percorrerEpsilon stateS nextStates visited=
       let st = !^(trans.next) in
       (**not (doesStackContain st visited)*)
       if(not (List.exists (fun x -> x = st.id) visited)) then begin
-        percorrerEpsilon st nextStates (st.id::visited);
+        percorrerEpsilon st nextStates (visited@[st.id]);
       end
     in
     List.iter aux stateS.epsilon;
-  else nextStates:=stateS ::!nextStates  
+  else nextStates:=!nextStates @ [stateS] 
 
 
 (*---------------------------------*)
@@ -801,15 +801,8 @@ let search nfa word =
     end
   in
 
-  let strlen = String.length word in
-  let i = ref 0 in
-  while((not (!hasMatch)) && (!i) < strlen) do
-    symbolOfWord (String.get word (!i));
 
-
-    i:=!i+1;
-  done;
-  (*String.iter symbolOfWord word;*)
+  String.iter symbolOfWord word;
 
   (*hasMatch serve para descobrir um prefixo e o doesStackContainEnd para sufixo*)
   if(!hasMatch) then true
@@ -818,37 +811,6 @@ let search nfa word =
 (*---------------------------------*)
 
 
-(*
-let search nfa word =
-  let currentState = Stack.create () in
-  let nextStates = Stack.create () in
-  let lnStr = String.length word in
-  let tempStack = Stack.create () in
-  let un =percorrerEpsilon nfa.startState currentState nextStates in
-  let stateOfCurrentStates st nextStates symbol =
-    if(List.exists (fun x-> x.symbol = symbol) st.transitions) then
-      let nextState = !^((List.find (fun x-> x.symbol = symbol) st.transitions).next) in
-      percorrerEpsilon nextState nextStates tempStack;
-      Stack.clear tempStack;
-  in
-
-  let rec symbolOfWordRec word scanPlace =
-    print_char (String.get word scanPlace);
-    if(scanPlace<(lnStr -1)) then
-      begin
-        Stack.clear nextStates;
-        Stack.iter (fun x->stateOfCurrentStates x nextStates (String.get word scanPlace)) currentState; (*Esta parte tem de percorrer mas também tem de voltar a trás *)
-        Stack.clear currentState;
-        copiarParaOutraStack nextStates currentState;
-        symbolOfWordRec word (scanPlace+1);
-      end
-  in 
-
-
-  symbolOfWordRec word 0;
-  doesStackContainEnd currentState
-
-  *)
 let isAdn word =
   let flag = ref true in
   let aux s =
@@ -866,6 +828,7 @@ let tamanhoAdn = String.length adn;;
 (*if(tamanhoAdn<0|| tamanhoAdn>5000) then raise (Entrada_invalida "O ramo de ADN só pode ter um tamanho entre 0 e 1000");;*)
 (*if(not (isAdn adn)) then raise (Entrada_invalida "O ramo de ADN só pode os Caracteres 'A' 'C' 'G' 'T'");;*)
 
+(*
 let () =
   let totalTime = Sys.time()in
   let regexStart = Sys.time() in
@@ -879,14 +842,19 @@ let () =
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
   Printf.printf "\nMatching Time elapsed %g s\n" (Sys.time() -. matchTime);
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
-(*
+*)
+
+
 let () =
+
+  let totalTime = Sys.time()in
 
   let r = regexp padrao in
 
   let strS = adn in
 
   let resultingNfa =buildNfaS r in
+
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
 
-*)
+  Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
