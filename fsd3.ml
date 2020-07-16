@@ -604,11 +604,17 @@ type transition = {mutable next:state pointer; mutable symbol:char}
 and state = {mutable isEnd: bool; mutable transitions:transition list;mutable epsilon:transition list;id:int}
 and nfa = {mutable startState:state; mutable endState:state}
 
+
+
+
+(*Nós baseamo-nos nestas duas páginas https://medium.com/swlh/visualizing-thompsons-construction-algorithm-for-nfas-step-by-step-f92ef378581b* e https://deniskyashif.com/2019/02/17/implementing-a-regular-expression-engine/ *)
+(*A primeira serviu-nos para entender o que era necessário fazer (NFAs a incluir NFAs ) e o segundo a implementação das mesmas *)
 let createEstado eFinal = 
   globalId:=!globalId +1;
   {isEnd= eFinal; transitions=[];epsilon=[];id=(!globalId)}
 
 let createC (c:char) =
+  tamanhoRegex:=!tamanhoRegex+1;
   let first = createEstado false in
   let second = createEstado true in
   let newTrans = {next= new_pointer second;symbol=c} in
@@ -679,7 +685,7 @@ let rec buildNfa s =
  *)
 
 let rec buildNfaS s =
-  tamanhoRegex:= !tamanhoRegex+1;  match s with
+  match s with
   | V       ->  createV
   | E       ->  createE
   | C  c    ->  createC c
@@ -699,55 +705,6 @@ let rec string_of_regexp s =
   | U (f,g) -> "("^(string_of_regexp f)^" + "^(string_of_regexp g)^")"
   | P (f,g) -> "("^(string_of_regexp f)^" . "^(string_of_regexp g)^")"
   | S s     -> (string_of_regexp s)^"*"
-
-
-
-
-
-
-
-
-let listToStack lista stackA=
-  let pushAux a =
-    Stack.push a stackA
-  in
-  List.iter pushAux lista
-
-
-let stackToList stackA =
-  let rec aux stackA =
-    if(not (Stack.is_empty stackA)) then [(Stack.pop stackA)] @ (aux stackA)
-    else []
-  in
-  aux stackA
-
-let copiarParaOutraStack stackA stackB =
-  Stack.iter (fun x -> Stack.push x stackB) stackA;;
-
-let doesStackContain ele stackA =
-  let contains = ref false in
-  let aux stackEle =
-    if(stackEle = ele) then contains := true
-    else ()
-  in
-  Stack.iter aux stackA;
-  !contains
-
-
-
-let doesStackContainEnd stackA=
-  let rec aux stackB =
-    if(Stack.is_empty stackB) then false
-    else begin
-      let lastPop = Stack.pop stackB in
-      if(lastPop.isEnd) then true || aux stackB
-      else false || aux stackB
-    end
-  in
-  aux stackA
-
-
-
 
 
 let rec percorrerEpsilon stateS nextStates visited=
@@ -815,7 +772,6 @@ let search nfa word =
   let currentState = ref [] in
   let nextStates = ref [] in
   let hasMatch = ref false in
-  let hasFailed =  ref true in
   percorrerEpsilon nfa.startState currentState ([]);
   (*let inicio = ref !currentState in *)
 
@@ -828,7 +784,6 @@ let search nfa word =
       if(not (nextEle = None)) then
         let nextState = !^((Option.get nextEle).next) in
         percorrerEpsilon nextState nextStates [];
-        hasFailed := false;
 
   in
 
@@ -837,8 +792,8 @@ let search nfa word =
     if(not !hasMatch) then begin
       List.iter (fun x->stateOfCurrentStates x nextStates symbol)  !currentState;
       currentState:=!nextStates;
-      hasFailed:=true;
     end
+    (*else print_string "FOUND!"*)
   in
 
 
@@ -852,18 +807,16 @@ let search nfa word =
 let isAdn word =
   let flag = ref true in
   let aux s =
-    if(Char.equal s 'A' || Char.equal s 'C'|| Char.equal s 'G' || Char.equal s 'T') then ()
+    if(Char.equal s '\n' ||Char.equal s 'A' || Char.equal s 'C'|| Char.equal s 'G' || Char.equal s 'T') then ()
     else flag:=false
   in
   String.iter aux word;
   !flag
 
 let padrao = read_line ();;
-let tamanhoPadrao = String.length padrao;;
-(*if(tamanhoPadrao<0|| tamanhoPadrao>100) then raise (Entrada_invalida "O padrão só pode ter um tamanho entre 0 e 100");;*)
 let adn = read_line ();;
 let tamanhoAdn = String.length adn;;
-(*if(tamanhoAdn<0|| tamanhoAdn>5000) then raise (Entrada_invalida "O ramo de ADN só pode ter um tamanho entre 0 e 1000");;*)
+(*if(tamanhoAdn<0|| tamanhoAdn>5000) then raise (Entrada_invalida "O ramo de ADN só pode ter um tamanho entre 0 e 5000");;*)
 (*if(not (isAdn adn)) then raise (Entrada_invalida "O ramo de ADN só pode os Caracteres 'A' 'C' 'G' 'T'");;*)
 
 (*
@@ -881,6 +834,7 @@ let () =
   Printf.printf "\nMatching Time elapsed %g s\n" (Sys.time() -. matchTime);
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
 
+  *)
 let () =
 
   let totalTime = Sys.time()in
@@ -895,8 +849,7 @@ let () =
 
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
 
-  *)
-
+(*
 let () = 
 
   let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]) in
@@ -904,5 +857,7 @@ let () =
   let strS = adn in
 
   let resultingNfa =buildNfaS r in
+  (*if(!(tamanhoRegex)<0|| (!tamanhoRegex)>100) then raise (Entrada_invalida "O padrão só pode ter um tamanho entre 0 e 100");*)
 
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
+  *)
