@@ -634,6 +634,11 @@ let createV =
 let addEpsilonTransition from destination=
   from.epsilon <- from.epsilon @ [{next = new_pointer destination;symbol='\\'}];;
 
+
+let addCharTransition from destination cha =
+
+  from.transitions <- from.transitions @ [{next = new_pointer destination;symbol=cha}];;
+
 (*Tipos de NFAs*)
 let concat first second=
   addEpsilonTransition first.endState second.startState;
@@ -664,6 +669,22 @@ let closure nfaS =
   nfaS.endState.isEnd <- false;
   {startState = startS;endState=endS}
 
+let changeFinal nfaS =
+  let endS = createEstado true in
+  addCharTransition nfaS.startState nfaS.startState 'A';
+  addCharTransition nfaS.startState nfaS.startState 'G';
+  addCharTransition nfaS.startState nfaS.startState 'C';
+  addCharTransition nfaS.startState nfaS.startState 'T';
+  nfaS.endState.isEnd <- false;
+  addEpsilonTransition nfaS.endState endS;
+  addCharTransition endS endS 'A';
+  addCharTransition endS endS 'G';
+  addCharTransition endS endS 'C';
+  addCharTransition endS endS 'T';
+  {startState = nfaS.startState; endState = endS}
+
+
+
 
 (*Função que transforma os tipos recursivos numa lista, por exemplo, (A+B)*.D ficaria PSUC(A)C(B)C(D)*)
 (*NOTA:Segundo a aula do profesor isto dá para pôr tudo num só match, não é necessário pôr isto numa pilha, possivelmente mais rápido.*)
@@ -683,17 +704,17 @@ let rec buildNfa s =
                 buildNfa s
 
  *)
-
-let rec buildNfaS s =
-  match s with
-  | V       ->  createV
-  | E       ->  createE
-  | C  c    ->  createC c
-  | U (f,g) ->  union (buildNfaS f) (buildNfaS g)
-  | P (f,g) ->  concat (buildNfaS f) (buildNfaS g)
-  | S s     ->  closure (buildNfaS s)
-;;
-
+let buildNfa s =
+  let rec buildNfaS s =
+    match s with
+    | V       ->  createV
+    | E       ->  createE
+    | C  c    ->  createC c
+    | U (f,g) ->  union (buildNfaS f) (buildNfaS g)
+    | P (f,g) ->  concat (buildNfaS f) (buildNfaS g)
+    | S s     ->  closure (buildNfaS s)
+  in
+  buildNfaS s
 
 (*Para debugging das listas*)
 
@@ -708,101 +729,49 @@ let rec string_of_regexp s =
 
 
 let rec percorrerEpsilon stateS nextStates visited=
-
   if(List.length stateS.epsilon > 0) then
     let aux trans =
       let st = !^(trans.next) in
-      (**not (doesStackContain st visited)*)
       if(not (List.exists (fun x -> x = st.id) visited)) then begin
+        (*List.iter (fun x-> print_int x;print_char ';') visited;*)
+        (*print_char '\n';*)
         percorrerEpsilon st nextStates (visited@[st.id]);
       end
     in
     List.iter aux stateS.epsilon;
   else nextStates:=!nextStates @ [stateS] 
 
-
-(*---------------------------------*)
-(*
-let search nfa word =
-  let currentState = ref [] in
-  let nextStates = ref [] in
-  let hasMatch = ref false in
-  let hasFailed =  ref true in
-  percorrerEpsilon nfa.startState currentState ([]);
-  let inicio = ref !currentState in 
-
-  let stateOfCurrentStates st nextStates symbol =
-    if(st.isEnd || !hasMatch) then hasMatch:=true
-    else
-      (*let nextEle = List.find_opt (fun x-> x.symbol = symbol) st.transitions in*)
-      (*Possivelmente deve-se tirar este sort*)
-      let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
-      if(not (nextEle = None)) then
-        let nextState = !^((Option.get nextEle).next) in
-        percorrerEpsilon nextState nextStates [];
-        hasFailed := false;
-
-  in
-
-  let symbolOfWord symbol =
-    nextStates:= [];
-    if(not !hasMatch) then begin
-      List.iter (fun x->stateOfCurrentStates x nextStates symbol)  !currentState;
-      if(!hasFailed) then begin
-        currentState := !inicio;
-        hasFailed:=true;
-      end
-      else begin
-        currentState:=!nextStates;
-        hasFailed:=true;
-      end
-    end
-  in
-
-
-  String.iter symbolOfWord word;
-
-  (*hasMatch serve para descobrir um prefixo e o doesStackContainEnd para sufixo*)
-  if(!hasMatch) then true
-  else 
-    List.exists (fun x -> x.isEnd = true) !currentState
-  *)
 (*---------------------------------*)
 let search nfa word =
   let currentState = ref [] in
   let nextStates = ref [] in
-  let hasMatch = ref false in
   percorrerEpsilon nfa.startState currentState ([]);
   (*let inicio = ref !currentState in *)
 
   let stateOfCurrentStates st nextStates symbol =
-    if(st.isEnd || !hasMatch) then hasMatch:=true
-    else
-      (*let nextEle = List.find_opt (fun x-> x.symbol = symbol) st.transitions in*)
-      (*Possivelmente deve-se tirar este sort*)
-      let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
-      if(not (nextEle = None)) then
-        let nextState = !^((Option.get nextEle).next) in
-        percorrerEpsilon nextState nextStates [];
+
+    let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
+    if(not (nextEle = None)) then 
+      let nextState = !^((Option.get nextEle).next) in
+      percorrerEpsilon nextState nextStates [];
 
   in
 
   let symbolOfWord symbol =
     nextStates:= [];
-    if(not !hasMatch) then begin
-      List.iter (fun x->stateOfCurrentStates x nextStates symbol)  !currentState;
-      currentState:=!nextStates;
-    end
+    List.iter (fun x->stateOfCurrentStates x nextStates symbol) (!currentState);
+    currentState:=!nextStates;
     (*else print_string "FOUND!"*)
   in
 
 
   String.iter symbolOfWord word;
 
-  (*hasMatch serve para descobrir um prefixo e o doesStackContainEnd para sufixo*)
-  if(!hasMatch) then true
-  else 
-    List.exists (fun x -> x.isEnd = true) !currentState
+  List.exists (fun x -> x.isEnd = true) !currentState
+
+
+
+
 
 let isAdn word =
   let flag = ref true in
@@ -827,7 +796,7 @@ let () =
   Printf.printf "\nRegex Parsing Time elapsed %g s\n" (Sys.time() -. regexStart);
   let compileStart= Sys.time() in
   let strS = adn in
-  let resultingNfa =buildNfaS r in
+  let resultingNfa =buildNfa r in
   Printf.printf "\nCompiling Time elapsed %g s\n" (Sys.time() -. compileStart);
   let matchTime= Sys.time() in
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
@@ -839,13 +808,13 @@ let () =
 
   let totalTime = Sys.time()in
 
-  let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]) in
+  let r = regexp padrao(*String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]*) in
 
   let strS = adn in
 
-  let resultingNfa =buildNfaS r in
-
-  if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
+  let resultingNfa =buildNfa r in
+  let lastNfa = changeFinal resultingNfa in
+  if(search lastNfa strS) then print_string "YES\n" else print_string "NO\n";
 
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
 
@@ -856,7 +825,7 @@ let () =
 
   let strS = adn in
 
-  let resultingNfa =buildNfaS r in
+  let resultingNfa =buildNfa r in
   (*if(!(tamanhoRegex)<0|| (!tamanhoRegex)>100) then raise (Entrada_invalida "O padrão só pode ter um tamanho entre 0 e 100");*)
 
   if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
