@@ -600,6 +600,9 @@ let new_pointer x = Pointer (ref x);;
 let globalId= ref 0
 let tamanhoRegex = ref 0
 
+
+(* *)
+
 type transition = {mutable next:state pointer; mutable symbol:char}
 and state = {mutable isEnd: bool; mutable transitions:transition list;mutable epsilon:transition list;id:int}
 and nfa = {mutable startState:state; mutable endState:state}
@@ -729,14 +732,17 @@ let print_bool boo =
   if(boo) then print_string "true"
   else print_string "false"
 
+(*---------------------------------*)
+let remove_elt e l =
+  let rec go l acc = match l with
+    | [] -> List.rev acc
+    | x::xs when e.id = x.id -> go xs acc
+    | x::xs -> go xs (x::acc)
+  in go l []
+
+
 let hasMatch = ref false
 let rec percorrerEpsilon stateS nextStates visited=
-  (*
-  print_string "Tmh: ";
-  print_int (List.length !visited);
-  print_char '\n';
-  print_bool !hasMatch; 
-  *)
   if(List.length stateS.epsilon > 0) then
 
     let aux trans =
@@ -748,80 +754,133 @@ let rec percorrerEpsilon stateS nextStates visited=
       end
     in
     List.iter aux stateS.epsilon;
-  else nextStates:=!nextStates @ [stateS] 
+  else nextStates:=stateS :: !nextStates 
 
-(*---------------------------------*)
 let search nfa word =
   let currentState = ref [] in
   let nextStates = ref [] in
-  let visited = ref [] in
   percorrerEpsilon nfa.startState currentState (ref []);
   let restart = !currentState in
+  let visited = ref [] in
   let stateOfCurrentStates st nextStates symbol =
-    (*print_string "YE";*)
     (*if(!hasMatch) then print_string "HAS MATCH";*)
+    (*Printf.printf "Next: %d  Current:%d  Visited %d" (List.length !nextStates) (List.length !currentState) (List.length !visited);*)
     let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
     if(not (nextEle = None)) then
       let nextState = !^((Option.get nextEle).next) in
-      print_char symbol;
       if(nextState.isEnd || !hasMatch) then hasMatch:=true
-      else begin percorrerEpsilon nextState nextStates visited; visited := []; end
-
+      else begin percorrerEpsilon nextState nextStates (visited);  end
 
   in
 
-  let symbolOfWord symbol =
 
-    nextStates:= [];
-    List.iter (fun x->
-        stateOfCurrentStates x nextStates symbol
-      ) (!currentState);
-    if(not (List.length !nextStates = 0) ) then
-      currentState:=!nextStates
-    else 
-      currentState:=restart;
-    nextStates:=[];
+  let symbolOfWord symbol =
+    if(not (!hasMatch)) then begin
+      nextStates:= [];
+      currentState := nfa.startState :: !currentState;
+      List.iter (fun x->
+          stateOfCurrentStates x nextStates symbol
+        ) (!currentState);
+      visited:=[];
+      currentState := !nextStates;
+      if(not (List.length !nextStates = 0) ) then
+        currentState:=!nextStates
+      else 
+        currentState:=restart;
+      nextStates:=[];
+    end
   in
 
 
   String.iter symbolOfWord word;
 
   List.exists (fun x -> x.isEnd = true) !currentState || !hasMatch
-
-
 (*
-  let rec findNextStates st nextStates visited =
-  if(st.epsilon = []) then
-    nextStates:= !nextStates @ [st]
-  else
-    List.iter (fun x -> 
-        let ss = !^(x.next) in
-        if(not (List.exists (fun a -> a.id = ss.id) !visited)) 
-        then visited := !visited @ [ss];
-        findNextStates ss nextStates visited;
+  let percorrerEpsilon stateS symbol =
+  if(List.length stateS.epsilon > 0) then
 
-      ) (st.epsilon)
+    let aux trans =
+      let st = !^(trans.next) in
+      if(not (List.exists (fun x -> x = st.id) !visited)) then begin
 
-  let search nfa word = 
-  let currentStates = ref [] in
-  findNextStates nfa.startState currentStates (ref []);
-
-  String.iter (fun symbol -> 
-      let nextStates = ref [] in
-      List.iter(fun state ->
-          let nextEle = List.find_opt (fun x-> x.symbol = symbol) (state.transitions) in
-          if(not (nextEle = None)) then
-            let nextState = !^((Option.get nextEle).next) in
-            findNextStates nextState nextStates (ref[]);
-        ) (!currentStates);
+        percorrerEpsilon st nextStates;
+      end
+    in
+    List.iter aux stateS.epsilon;
+  else nextStates:=!nextStates @ [stateS] 
+let remove_elt e l =
+  let rec go l acc = match l with
+    | [] -> List.rev acc
+    | x::xs when e.id = x.id -> go xs acc
+    | x::xs -> go xs (x::acc)
+  in go l []
 
 
-      currentStates := !nextStates; 
-    ) word;
-  List.exists (fun x -> x.isEnd = true) !currentStates
-
+let search nfa word =
+  let currentState =ref [] in
+  let nextStates = ref [] in
+  let hasMatch = ref false in
+(*
+    print_char '\n';
+    print_int (List.length stateS.epsilon);
+    print_int (List.length stateS.transitions);
+    print_char '\n';
+    print_int (List.length !currentState);
+    print_char '\n';
 
 *)
+    if(List.length stateS.epsilon> 0) then begin
+
+
+      (*Printf.printf "Tamanho %d\n" (List.length !currentState);*)
+      currentState := remove_elt stateS !currentState;
+      (*Printf.printf "Tamanho %d\n" (List.length !currentState);*)
+      List.iter (fun x -> 
+
+          let nextState = !^(x.next) in
+          currentState := !currentState @ [nextState];
+          percorrerEpsilon nextState;
+        ) stateS.epsilon;
+    end;
+    if(List.length stateS.transitions > 0)  then begin
+      nextStates := stateS :: !nextStates ;
+      (*Printf.printf "Tamanho %d\n" (List.length !currentState);*)
+      currentState := remove_elt stateS !currentState;
+    end
+
+  in
+  let andarNextStates nextState symbol=
+    nextStates := remove_elt nextState !nextStates;
+    let nextEle = List.find_opt (fun x-> x.symbol = symbol)  nextState.transitions  in
+    if(not (nextEle = None)) then
+      let ns = !^((Option.get nextEle).next) in
+      nextStates := ns::!nextStates;
+  in
+  let i = ref 0 in
+  while !i < (String.length word) && (not !hasMatch)do 
+    let chr  =(String.get word !i) in
+    print_char chr;
+    currentState := nfa.startState :: !currentState;
+
+    print_int (List.length !nextStates);
+    List.iter (fun x -> percorrerEpsilon x) !currentState;
+    print_string "---------------------";
+    hasMatch:=!hasMatch || List.exists (fun x-> x.isEnd) !currentState ||  List.exists (fun x-> x.isEnd) !nextStates ;
+    if(not !hasMatch) then
+      begin
+        List.iter (fun x -> andarNextStates x (String.get word !i)) !nextStates;
+        currentState := !nextStates;
+        hasMatch:=!hasMatch || List.exists (fun x-> x.isEnd) !currentState;
+        nextStates := [];
+        i:=!i+1;
+      end
+
+  done;
+  !hasMatch
+
+*)
+
+
 let isAdn word =
   let flag = ref true in
   let aux s =
@@ -855,7 +914,7 @@ let () =
   *)
 let () =
 
-  let totalTime = Sys.time()in
+  (*let totalTime = Sys.time()in*)
 
   let r = regexp padrao in
 
@@ -865,7 +924,7 @@ let () =
   let lastNfa = resultingNfa in
   if(search lastNfa strS) then print_string "YES\n" else print_string "NO\n";
 
-  Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
+  (*Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);*)
 
 (*
 let () = 
