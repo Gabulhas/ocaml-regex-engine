@@ -607,7 +607,15 @@ and nfa = {mutable startState:state; mutable endState:state}
 
 
 
+let addEpsilonTransition from destination=
+  from.epsilon <- from.epsilon @ [{next = new_pointer destination;symbol='\\'}];;
+
+
+let addCharTransition from destination cha =
+
+  from.transitions <- from.transitions @ [{next = new_pointer destination;symbol=cha}];;
 (*Nós baseamo-nos nestas duas páginas https://medium.com/swlh/visualizing-thompsons-construction-algorithm-for-nfas-step-by-step-f92ef378581b* e https://deniskyashif.com/2019/02/17/implementing-a-regular-expression-engine/ *)
+
 (*A primeira serviu-nos para entender o que era necessário fazer (NFAs a incluir NFAs ) e o segundo a implementação das mesmas *)
 let createEstado eFinal = 
   globalId:=!globalId +1;
@@ -622,7 +630,9 @@ let createC (c:char) =
   {startState= first ;endState=second}
 
 let createE =
-  let first= createEstado true in
+  let first= createEstado false in
+  let second = createEstado true in
+  addEpsilonTransition first second;
   {startState=first ;endState= first}
 
 let createV = 
@@ -647,14 +657,13 @@ let concat first second=
 
 let union first second=
   let startS = createEstado false in
-  let endS = createEstado true in
-  first.endState.isEnd<-false;
-  second.endState.isEnd<-false;
   addEpsilonTransition startS first.startState; 
   addEpsilonTransition startS second.startState; 
+  let endS = createEstado true in
+  first.endState.isEnd<-false;
   addEpsilonTransition first.endState endS;
+  second.endState.isEnd<-false;
   addEpsilonTransition second.endState endS;
-
   {startState= startS; endState=endS}
 
 let closure nfaS =
@@ -669,19 +678,7 @@ let closure nfaS =
   nfaS.endState.isEnd <- false;
   {startState = startS;endState=endS}
 
-let changeFinal nfaS =
-  let endS = createEstado true in
-  addCharTransition nfaS.startState nfaS.startState 'A';
-  addCharTransition nfaS.startState nfaS.startState 'G';
-  addCharTransition nfaS.startState nfaS.startState 'C';
-  addCharTransition nfaS.startState nfaS.startState 'T';
-  nfaS.endState.isEnd <- false;
-  addEpsilonTransition nfaS.endState endS;
-  addCharTransition endS endS 'A';
-  addCharTransition endS endS 'G';
-  addCharTransition endS endS 'C';
-  addCharTransition endS endS 'T';
-  {startState = nfaS.startState; endState = endS}
+
 
 
 
@@ -728,14 +725,26 @@ let rec string_of_regexp s =
   | S s     -> (string_of_regexp s)^"*"
 
 
+let print_bool boo =
+  if(boo) then print_string "true"
+  else print_string "false"
+
+let hasMatch = ref false
 let rec percorrerEpsilon stateS nextStates visited=
+  (*
+  print_string "Tmh: ";
+  print_int (List.length !visited);
+  print_char '\n';
+  print_bool !hasMatch; 
+  *)
   if(List.length stateS.epsilon > 0) then
+
     let aux trans =
       let st = !^(trans.next) in
-      if(not (List.exists (fun x -> x = st.id) visited)) then begin
-        (*List.iter (fun x-> print_int x;print_char ';') visited;*)
-        (*print_char '\n';*)
-        percorrerEpsilon st nextStates (visited@[st.id]);
+      if(not (List.exists (fun x -> x = st.id) !visited)) then begin
+        visited := !visited @ [st.id];
+        if(st.isEnd) then hasMatch:=true;
+        percorrerEpsilon st nextStates visited;
       end
     in
     List.iter aux stateS.epsilon;
@@ -745,34 +754,74 @@ let rec percorrerEpsilon stateS nextStates visited=
 let search nfa word =
   let currentState = ref [] in
   let nextStates = ref [] in
-  percorrerEpsilon nfa.startState currentState ([]);
-  (*let inicio = ref !currentState in *)
-
+  let visited = ref [] in
+  percorrerEpsilon nfa.startState currentState (ref []);
+  let restart = !currentState in
   let stateOfCurrentStates st nextStates symbol =
-
+    (*print_string "YE";*)
+    (*if(!hasMatch) then print_string "HAS MATCH";*)
     let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
-    if(not (nextEle = None)) then 
+    if(not (nextEle = None)) then
       let nextState = !^((Option.get nextEle).next) in
-      percorrerEpsilon nextState nextStates [];
+      print_char symbol;
+      if(nextState.isEnd || !hasMatch) then hasMatch:=true
+      else begin percorrerEpsilon nextState nextStates visited; visited := []; end
+
 
   in
 
   let symbolOfWord symbol =
+
     nextStates:= [];
-    List.iter (fun x->stateOfCurrentStates x nextStates symbol) (!currentState);
-    currentState:=!nextStates;
-    (*else print_string "FOUND!"*)
+    List.iter (fun x->
+        stateOfCurrentStates x nextStates symbol
+      ) (!currentState);
+    if(not (List.length !nextStates = 0) ) then
+      currentState:=!nextStates
+    else 
+      currentState:=restart;
+    nextStates:=[];
   in
 
 
   String.iter symbolOfWord word;
 
-  List.exists (fun x -> x.isEnd = true) !currentState
+  List.exists (fun x -> x.isEnd = true) !currentState || !hasMatch
 
 
+(*
+  let rec findNextStates st nextStates visited =
+  if(st.epsilon = []) then
+    nextStates:= !nextStates @ [st]
+  else
+    List.iter (fun x -> 
+        let ss = !^(x.next) in
+        if(not (List.exists (fun a -> a.id = ss.id) !visited)) 
+        then visited := !visited @ [ss];
+        findNextStates ss nextStates visited;
+
+      ) (st.epsilon)
+
+  let search nfa word = 
+  let currentStates = ref [] in
+  findNextStates nfa.startState currentStates (ref []);
+
+  String.iter (fun symbol -> 
+      let nextStates = ref [] in
+      List.iter(fun state ->
+          let nextEle = List.find_opt (fun x-> x.symbol = symbol) (state.transitions) in
+          if(not (nextEle = None)) then
+            let nextState = !^((Option.get nextEle).next) in
+            findNextStates nextState nextStates (ref[]);
+        ) (!currentStates);
 
 
+      currentStates := !nextStates; 
+    ) word;
+  List.exists (fun x -> x.isEnd = true) !currentStates
 
+
+*)
 let isAdn word =
   let flag = ref true in
   let aux s =
@@ -808,12 +857,12 @@ let () =
 
   let totalTime = Sys.time()in
 
-  let r = regexp padrao(*String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]*) in
+  let r = regexp padrao in
 
-  let strS = adn in
+  let strS = String.trim adn in
 
   let resultingNfa =buildNfa r in
-  let lastNfa = changeFinal resultingNfa in
+  let lastNfa = resultingNfa in
   if(search lastNfa strS) then print_string "YES\n" else print_string "NO\n";
 
   Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
