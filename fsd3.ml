@@ -584,6 +584,7 @@ exception Entrada_invalida of string;;
 
 
 (* Apontadores*)
+(*Referência: https://ocaml.org/learn/tutorials/pointers.html*)
 type 'a pointer = Null | Pointer of 'a ref;;
 let ( !^ ) = function
   | Null -> invalid_arg "Attempt to dereference the null pointer"
@@ -597,15 +598,15 @@ let new_pointer x = Pointer (ref x);;
 
 (*tipos e funcoes*)
 
-let globalId= ref 0
+let globalId= ref 0 (*Cada estado tem uma identificação única para promover uma procuram mais rápida na lista de estados já visitados*)
 let tamanhoRegex = ref 0
 
 
 (* *)
 
-type transition = {mutable next:state pointer; mutable symbol:char}
-and state = {mutable isEnd: bool; mutable transitions:transition list;mutable epsilon:transition list;id:int}
-and nfa = {mutable startState:state; mutable endState:state}
+type transition = {mutable next:state pointer; mutable symbol:char} (*Cada transição aponta para um estado e tem um char, sem for epsilon tem // mas só para distinção*)
+and state = {mutable isEnd: bool; mutable transitions:transition list;mutable epsilon:transition list;id:int} (*Cada estado tem uma lista de transições de símbolos e de epsilon*)
+and nfa = {mutable startState:state; mutable endState:state} (*Isto serve principalmente para a construção recursiva do NFA*)
 
 
 
@@ -620,25 +621,29 @@ let addCharTransition from destination cha =
 (*Nós baseamo-nos nestas duas páginas https://medium.com/swlh/visualizing-thompsons-construction-algorithm-for-nfas-step-by-step-f92ef378581b* e https://deniskyashif.com/2019/02/17/implementing-a-regular-expression-engine/ *)
 
 (*A primeira serviu-nos para entender o que era necessário fazer (NFAs a incluir NFAs ) e o segundo a implementação das mesmas *)
-let createEstado eFinal = 
+
+
+let createEstado eFinal =  (* "Construtor" de um Caracter (C)*)
   globalId:=!globalId +1;
   {isEnd= eFinal; transitions=[];epsilon=[];id=(!globalId)}
 
-let createC (c:char) =
+(*Tipos de NFAs*)
+
+let createC (c:char) = (*"Construtor" de um NFA de um Caracter*)
   tamanhoRegex:=!tamanhoRegex+1;
   let first = createEstado false in
   let second = createEstado true in
-  let newTrans = {next= new_pointer second;symbol=c} in
+  let newTrans = {next= new_pointer second;symbol=c} in (*A transição representa a transição de um estado para outro de uma letra*)
   first.transitions <- [] @ [newTrans];
   {startState= first ;endState=second}
 
-let createE =
+let createE = (*"Construtor" de um NFA de um Epsilon (E)*)
   let first= createEstado false in
   let second = createEstado true in
-  addEpsilonTransition first second;
-  {startState=first ;endState= first}
+  addEpsilonTransition first second; (*A transição representa a transição de um estado para outro de um epsilon*)
+  {startState=first ;endState= second}
 
-let createV = 
+let createV = (*"Construtor" de um NFA vazio (V)*)
   let first = createEstado false in
   let second = createEstado true in
   {startState=first ;endState=second}
@@ -652,13 +657,13 @@ let addCharTransition from destination cha =
 
   from.transitions <- from.transitions @ [{next = new_pointer destination;symbol=cha}];;
 
-(*Tipos de NFAs*)
-let concat first second=
-  addEpsilonTransition first.endState second.startState;
+
+let concat first second= (*"Construtor" de um NFA de concatenação (P)*)
+  addEpsilonTransition first.endState second.startState;   (* por exemplo, a concatenação de um NFA C(A), []--A-->[()] e C(B), []--B-->[()], U(C(A),C(B)) passa a []--A-->[]--1-->[]--B-->[()] *)
   first.endState.isEnd <-  false;
   {startState = first.startState; endState=second.endState}
 
-let union first second=
+let union first second= (*"Construtor" de um NFA de concatenação (P)*)
   let startS = createEstado false in
   addEpsilonTransition startS first.startState; 
   addEpsilonTransition startS second.startState; 
@@ -669,7 +674,13 @@ let union first second=
   addEpsilonTransition second.endState endS;
   {startState= startS; endState=endS}
 
-let closure nfaS =
+(*  
+                                                             |--1-->[]--A-->[]--1--|
+a uniao de C(A), []--A-->[()] e C(B), []--B-->[()] passa a-->[]                     [()]
+                                                             |--1-->[]--B-->[]--1--|
+*)
+
+let closure nfaS = (*"Construtor" de um NFA de Esterla de Kleen S*)
   let startS = createEstado false in
   let endS = createEstado true in
 
@@ -681,29 +692,22 @@ let closure nfaS =
   nfaS.endState.isEnd <- false;
   {startState = startS;endState=endS}
 
-
-
-
-
-
-(*Função que transforma os tipos recursivos numa lista, por exemplo, (A+B)*.D ficaria PSUC(A)C(B)C(D)*)
-(*NOTA:Segundo a aula do profesor isto dá para pôr tudo num só match, não é necessário pôr isto numa pilha, possivelmente mais rápido.*)
 (*
-let rec buildNfa s =
-  tamanhoRegex:= !tamanhoRegex+1;
+                                                                  |---1----
+                                                                  v       |
+por exemplo,a estrela de um NFA C(A), S(C(A)) passa a -->[]--1-->[]--A-->[]--1-->[()]
+                                                          |                        ^
+                                                          --------------1----------|
+*)
 
-  match s with
-  | V       ->  [createV]
-  | E       ->  [createE]
-  | C  c    ->  [createC c]
-  | U (f,g) ->  [{startState = createEstado false; endState =createEstado true; tipo = 'U'}] @
-                buildNfa f @ buildNfa g
-  | P (f,g) ->  [{startState = createEstado false; endState =createEstado true; tipo = 'P'}]@
-                buildNfa f @ buildNfa g
-  | S s     ->  [{startState = createEstado false; endState =createEstado true; tipo = 'S'}]@
-                buildNfa s
 
- *)
+(*Construção do NFA recursivamente, por exemplo (A.B)*, é equivalente ao tipo recursivo
+
+S(P(C(A),C(B)))
+
+ou seja, nós construimos primeiro o C(A), depois o C(B), incluimos estes na construção de concatentação
+e esta concatenação incluimos na construção de uma Estrela de Kleen
+*)
 let buildNfa s =
   let rec buildNfaS s =
     match s with
@@ -727,12 +731,12 @@ let rec string_of_regexp s =
   | P (f,g) -> "("^(string_of_regexp f)^" . "^(string_of_regexp g)^")"
   | S s     -> (string_of_regexp s)^"*"
 
+(*Debugging*)
 
 let print_bool boo =
   if(boo) then print_string "true"
   else print_string "false"
 
-(*---------------------------------*)
 let remove_elt e l =
   let rec go l acc = match l with
     | [] -> List.rev acc
@@ -740,148 +744,89 @@ let remove_elt e l =
     | x::xs -> go xs (x::acc)
   in go l []
 
+(*---------------------------------*)
 
-let hasMatch = ref false
+let hasMatch = ref false (*Flag que indica que ou já estivemos num estado final ou uma lista contem um estado final, e que já houve pelo menos um match*)
+
+
+(*Parte deste código é inspirado neste artigo https://deniskyashif.com/2019/02/17/implementing-a-regular-expression-engine/ , mais propriamente no algoritmo "Being in multiple states at once"
+com várias alterações para ser mais rápida a procura, e para procurar uma substring
+*)
+
+
+(*
+
+percorrerEpsilon percorre todos os epsilons até encontrar estados em que não possa saltar mais, ou seja, quando encontra um estado com transição de simbolo ou o final
+por exemplo, (A+A)*CC, entre o estado inicial, ele vai saltar 4 epsilons, até chegar dois estados com uma transição A, e um de Caracter
+Como os estados epsilons não têm qualquer valor e só serve para transitar, não para verificar a existência de um símbolo (por exemplo) esta é a razão porque os saltamos
+os next states são todos os estados de transição com simbolo que nós conseguimos chegar a partir do estado atual
+a lista "visited" contém os IDs dos estados por onde já passamos (IDs em vês de States porque a procura é mais rápida) para evitar um ciclo infinito
+todos os estados na lista nextState "passam" por esta função porque podemos estar em vários estados ao mesmo tempo
+
+
+*)
 let rec percorrerEpsilon stateS nextStates visited=
-  if(List.length stateS.epsilon > 0) then
+  if(List.length stateS.epsilon > 0) then (*Se contém pelo menos uma transição epsilon, vemos a que estado de transição com simbolo chegamos*)
 
     let aux trans =
       let st = !^(trans.next) in
-      if(not (List.exists (fun x -> x = st.id) !visited)) then begin
+      if(not (List.exists (fun x -> x = st.id) !visited)) then begin (*Se ele ainda não foi visitado*)
         visited := !visited @ [st.id];
         if(st.isEnd) then hasMatch:=true;
-        percorrerEpsilon st nextStates visited;
+        percorrerEpsilon st nextStates visited; (*Fazemos isto recursivamente, porque podemos ter vários estados de transiçao epsilon seguidos, por exemplo 11111111111111111A*)
       end
     in
     List.iter aux stateS.epsilon;
-  else nextStates:=stateS :: !nextStates 
+  else nextStates:=stateS :: !nextStates  (*Caso não tenha transições epsilon nós adicionamos  à lista next, pois poderão ser estados que tenham transições com símbolos*)
+
+
+
+
 
 let search nfa word =
-  let currentState = ref [] in
-  let nextStates = ref [] in
-  percorrerEpsilon nfa.startState currentState (ref []);
-  let restart = !currentState in
-  let visited = ref [] in
+  let currentState = ref [] in (*Lista que contem todos os estados onde nós estamos no momento*)
+  let nextStates = ref [] in (*Lista que contem todos os estados que possivelmente terão uma transição com um símbolo igual à letra onde estamso atualmente*)
+  percorrerEpsilon nfa.startState currentState (ref []); (*Para começar nós vemos que estados de transição de simbolo que conseguimos chegar a partir do primeiro estado do NFA resultante da construção *)
+  let restart = !currentState in (*Estados que conseguimos chegar a partir do primeiro estado, é usado mais tarde*)
+  let visited = ref [] in (*Lista que contem estados visitados*)
   let stateOfCurrentStates st nextStates symbol =
     (*if(!hasMatch) then print_string "HAS MATCH";*)
     (*Printf.printf "Next: %d  Current:%d  Visited %d" (List.length !nextStates) (List.length !currentState) (List.length !visited);*)
-    let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in
+    let nextEle = List.find_opt (fun x-> x.symbol = symbol)  st.transitions  in (*Procuramos se um dos estados onde estamso atualmente contém uma transição com um símbolo igual ao que estamos atualmente*)
     if(not (nextEle = None)) then
       let nextState = !^((Option.get nextEle).next) in
-      if(nextState.isEnd || !hasMatch) then hasMatch:=true
-      else begin percorrerEpsilon nextState nextStates (visited);  end
+      if(nextState.isEnd || !hasMatch) then hasMatch:=true (*Se o estado é final já podemos dizer que temos um match, por exemplo, quando temos a expressão regular (AA* ), e a cadeia CCCCAAAAAAAAAA, nós depois de termos percorrido CCCCAA já temos um match e não precisamos de encontrar mais estados   *)
+      else begin percorrerEpsilon nextState nextStates (visited);  end (*Caso o simbolo corresponda mas não temos match, vamos procurar todos os estados com transições de simbolo que conseguimos alcançar a partir deste*)
 
   in
 
 
-  let symbolOfWord symbol =
-    if(not (!hasMatch)) then begin
-      nextStates:= [];
-      currentState := nfa.startState :: !currentState;
+  let symbolOfWord symbol = (*Função auxiliar de iteração linear pela cadeia de adn*)
+    if(not (!hasMatch)) then begin (*Caso tenhamos match é desnecessário continuar a percorrer o NFA*)
+      nextStates:= [];  
       List.iter (fun x->
           stateOfCurrentStates x nextStates symbol
-        ) (!currentState);
-      visited:=[];
-      currentState := !nextStates;
-      if(not (List.length !nextStates = 0) ) then
-        currentState:=!nextStates
+        ) (!currentState);  (* Testamos se há estados na currentState que tenham uma transição com um símbolo igual ao caracter atual, e percorremos os mesmos caso tenham*)
+
+      hasMatch := !hasMatch || List.exists (fun x-> x.isEnd) !currentState ; (*Caso um dos estados atuais seja final já temos match*)
+      if(not (List.length !nextStates = 0) ) then (*Caso PELO MENOS um estado dos atuais tenha uma transição de simbolo igual ao caracter atual*)
+        begin
+
+          currentState:=!nextStates; (*Os estados atuais passam a ser iguais ao que avançamos anteriormente, na iteração do currentState pela função stateOfCurrentStates*)
+          currentState := !currentState @ restart; (*Acrescentamos os estados que alcançamos a partir do estado inicial do NFA para não perdermos informação*)
+          visited:=[]; 
+        end
       else 
-        currentState:=restart;
-      nextStates:=[];
+        currentState:=restart; (*Caso não haja nenhum estado na lista NextState, ou seja, não houve nenhuma transição dos estados do currentState a dar match com o nosso caracter, nós voltamos ao inicio do automato*)
     end
   in
 
 
   String.iter symbolOfWord word;
 
-  List.exists (fun x -> x.isEnd = true) !currentState || !hasMatch
-(*
-  let percorrerEpsilon stateS symbol =
-  if(List.length stateS.epsilon > 0) then
+  List.exists (fun x -> x.isEnd = true) !currentState || !hasMatch ||  List.exists (fun x -> x.isEnd = true) !nextStates 
 
-    let aux trans =
-      let st = !^(trans.next) in
-      if(not (List.exists (fun x -> x = st.id) !visited)) then begin
-
-        percorrerEpsilon st nextStates;
-      end
-    in
-    List.iter aux stateS.epsilon;
-  else nextStates:=!nextStates @ [stateS] 
-let remove_elt e l =
-  let rec go l acc = match l with
-    | [] -> List.rev acc
-    | x::xs when e.id = x.id -> go xs acc
-    | x::xs -> go xs (x::acc)
-  in go l []
-
-
-let search nfa word =
-  let currentState =ref [] in
-  let nextStates = ref [] in
-  let hasMatch = ref false in
-(*
-    print_char '\n';
-    print_int (List.length stateS.epsilon);
-    print_int (List.length stateS.transitions);
-    print_char '\n';
-    print_int (List.length !currentState);
-    print_char '\n';
-
-*)
-    if(List.length stateS.epsilon> 0) then begin
-
-
-      (*Printf.printf "Tamanho %d\n" (List.length !currentState);*)
-      currentState := remove_elt stateS !currentState;
-      (*Printf.printf "Tamanho %d\n" (List.length !currentState);*)
-      List.iter (fun x -> 
-
-          let nextState = !^(x.next) in
-          currentState := !currentState @ [nextState];
-          percorrerEpsilon nextState;
-        ) stateS.epsilon;
-    end;
-    if(List.length stateS.transitions > 0)  then begin
-      nextStates := stateS :: !nextStates ;
-      (*Printf.printf "Tamanho %d\n" (List.length !currentState);*)
-      currentState := remove_elt stateS !currentState;
-    end
-
-  in
-  let andarNextStates nextState symbol=
-    nextStates := remove_elt nextState !nextStates;
-    let nextEle = List.find_opt (fun x-> x.symbol = symbol)  nextState.transitions  in
-    if(not (nextEle = None)) then
-      let ns = !^((Option.get nextEle).next) in
-      nextStates := ns::!nextStates;
-  in
-  let i = ref 0 in
-  while !i < (String.length word) && (not !hasMatch)do 
-    let chr  =(String.get word !i) in
-    print_char chr;
-    currentState := nfa.startState :: !currentState;
-
-    print_int (List.length !nextStates);
-    List.iter (fun x -> percorrerEpsilon x) !currentState;
-    print_string "---------------------";
-    hasMatch:=!hasMatch || List.exists (fun x-> x.isEnd) !currentState ||  List.exists (fun x-> x.isEnd) !nextStates ;
-    if(not !hasMatch) then
-      begin
-        List.iter (fun x -> andarNextStates x (String.get word !i)) !nextStates;
-        currentState := !nextStates;
-        hasMatch:=!hasMatch || List.exists (fun x-> x.isEnd) !currentState;
-        nextStates := [];
-        i:=!i+1;
-      end
-
-  done;
-  !hasMatch
-
-*)
-
-
-let isAdn word =
+let isAdn word = (*Verificamos se existe um nucleotido não válido*)
   let flag = ref true in
   let aux s =
     if(Char.equal s '\n' ||Char.equal s 'A' || Char.equal s 'C'|| Char.equal s 'G' || Char.equal s 'T') then ()
@@ -893,48 +838,14 @@ let isAdn word =
 let padrao = read_line ();;
 let adn = read_line ();;
 let tamanhoAdn = String.length adn;;
-(*if(tamanhoAdn<0|| tamanhoAdn>5000) then raise (Entrada_invalida "O ramo de ADN só pode ter um tamanho entre 0 e 5000");;*)
-(*if(not (isAdn adn)) then raise (Entrada_invalida "O ramo de ADN só pode os Caracteres 'A' 'C' 'G' 'T'");;*)
 
-(*
-let () =
-  let totalTime = Sys.time()in
-  let regexStart = Sys.time() in
-  let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"])  in
-  Printf.printf "\nRegex Parsing Time elapsed %g s\n" (Sys.time() -. regexStart);
-  let compileStart= Sys.time() in
-  let strS = adn in
-  let resultingNfa =buildNfa r in
-  Printf.printf "\nCompiling Time elapsed %g s\n" (Sys.time() -. compileStart);
-  let matchTime= Sys.time() in
-  if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
-  Printf.printf "\nMatching Time elapsed %g s\n" (Sys.time() -. matchTime);
-  Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);
-
-  *)
 let () =
 
-  (*let totalTime = Sys.time()in*)
 
-  let r = regexp padrao in
+  let r = regexp padrao in (*Parsing do REGEX usando a função fornecida pelo professor*)
 
   let strS = String.trim adn in
 
-  let resultingNfa =buildNfa r in
+  let resultingNfa =buildNfa r in (*Construção do NFA a partir do r*)
   let lastNfa = resultingNfa in
   if(search lastNfa strS) then print_string "YES\n" else print_string "NO\n";
-
-  (*Printf.printf "\nTotal Time elapsed %g s\n" (Sys.time() -. totalTime);*)
-
-(*
-let () = 
-
-  let r = regexp (String.concat "" ["(A+G+C+T)*";padrao;"(A+G+C+T)*"]) in
-
-  let strS = adn in
-
-  let resultingNfa =buildNfa r in
-  (*if(!(tamanhoRegex)<0|| (!tamanhoRegex)>100) then raise (Entrada_invalida "O padrão só pode ter um tamanho entre 0 e 100");*)
-
-  if(search resultingNfa strS) then print_string "YES\n" else print_string "NO\n";
-  *)
